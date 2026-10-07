@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Camera</title>
+<style>
+  :root{--glass:rgba(60,60,67,.42);--glass-line:rgba(255,255,255,.18);--yellow:#ffd60a;--blue:#0a84ff;--green:#30d158;--red:#ff453a}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+  html,body{height:100%;margin:0;background:#000;color:#fff;font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;overflow:hidden}
+  body{display:flex;flex-direction:column;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .glass{position:relative;background:linear-gradient(135deg,rgba(255,255,255,.24),rgba(255,255,255,.05) 45%,rgba(255,255,255,.14));-webkit-backdrop-filter:blur(18px) saturate(190%) brightness(1.1);backdrop-filter:blur(18px) saturate(190%) brightness(1.1);box-shadow:inset 1.5px 1.5px 1px rgba(255,255,255,.5),inset -1px -1px 1px rgba(255,255,255,.2),inset 0 0 22px rgba(255,255,255,.07),0 10px 28px rgba(0,0,0,.3)}
+  .glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;background:linear-gradient(145deg,rgba(255,255,255,.95),rgba(255,255,255,0) 38%,rgba(255,255,255,0) 62%,rgba(255,255,255,.55));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+  button.glass{transition:transform .28s cubic-bezier(.3,1.7,.5,1)} button.glass:active{transform:scale(1.14)}
+  #sheet::before{display:none}
+  #torch[aria-pressed=true]{background:var(--yellow)} #torch[aria-pressed=true] svg{stroke:#000;fill:#000}
+  body.ring #finder::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 44px rgba(255,255,255,.96),inset 0 0 60px 50px rgba(255,255,255,.9);pointer-events:none}
+  body.review #finder::after{display:none}
+  button{font:inherit;color:#fff;border:0;background:none;padding:0;cursor:pointer}
+  button:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+  svg{display:block}
+
+  #top{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;position:relative;z-index:2}
+  .round{width:44px;height:44px;border-radius:50%;display:grid;place-items:center}
+  #toast{position:absolute;left:50%;top:8px;transform:translate(-50%,-8px);max-width:60%;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:500;opacity:0;transition:.25s;pointer-events:none;text-align:center}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  #toast.err{color:var(--red)} #toast.ok{color:var(--green)}
+
+  #finder{flex:1;min-height:0;position:relative;border-radius:22px;overflow:hidden;margin:0 6px;background:#111}
+  video,#shot{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  #shot{display:none;object-fit:contain;background:#fff;image-rendering:pixelated}
+  #mode{text-align:center;height:44px;line-height:44px;font-size:14px;font-weight:600;color:var(--yellow);letter-spacing:.3px}
+
+  #controls{height:112px;display:flex;align-items:center;justify-content:space-between;padding:0 28px}
+  #thumb{width:56px;height:56px;border-radius:12px;background:#222 center/cover;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3)}
+  #snap{width:78px;height:78px;border-radius:50%;border:4px solid #fff;display:grid;place-items:center}
+  #snap i{width:64px;height:64px;border-radius:50%;background:#fff;transition:transform .12s}
+  #snap:active i{transform:scale(.88)}
+  #preview-bar{display:none;align-items:center;justify-content:space-between;width:100%}
+  .pill{height:50px;padding:0 20px;border-radius:25px;font-size:17px;font-weight:600}
+  .pill.main{background:var(--yellow);color:#000}
+  .pill:disabled{opacity:.45}
+  body.review #controls .cam{display:none} body.review #preview-bar{display:flex} body.review #mode{visibility:hidden}
+
+  /* Settings sheet */
+  #scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:.3s;z-index:5}
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:6;border-radius:28px 28px 0 0;padding:10px 16px calc(24px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .38s cubic-bezier(.2,.9,.25,1);background:linear-gradient(160deg,rgba(255,255,255,.18),rgba(255,255,255,.04) 50%),rgba(28,28,32,.5)}
+  body.sheet #scrim{opacity:1;pointer-events:auto} body.sheet #sheet{transform:none}
+  #grab{width:38px;height:5px;border-radius:3px;background:rgba(255,255,255,.35);margin:0 auto 14px}
+  #sheet h2{margin:0 0 14px;font-size:20px;font-weight:700;text-align:center}
+  .group{background:rgba(255,255,255,.1);box-shadow:inset 0 .5px 0 rgba(255,255,255,.4);border-radius:14px;overflow:hidden;margin-bottom:14px}
+  .row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;min-height:54px;gap:12px}
+  .row+.row{box-shadow:inset 0 .5px 0 rgba(255,255,255,.14)}
+  .row small{display:block;color:#9b9ba1;font-size:13px;margin-top:2px}
+  #conn{background:var(--blue);border-radius:16px;padding:8px 16px;font-weight:600;font-size:15px}
+  #conn.on{background:rgba(48,209,88,.25);color:var(--green)}
+  .switch{position:relative;width:51px;height:31px;border-radius:16px;background:rgba(120,120,128,.5);transition:.25s;flex:none}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.3);transition:.25s}
+  .switch[aria-checked=true]{background:var(--green)} .switch[aria-checked=true]::after{transform:translateX(20px)}
+  #done{width:100%;height:50px;border-radius:14px;background:var(--blue);font-weight:600;font-size:17px}
+  #sheet{max-height:88vh;overflow-y:auto}
+  .gt{font-size:13px;color:#9b9ba1;margin:0 0 6px 16px}
+  .row.col{flex-direction:column;align-items:stretch;gap:4px}
+  .lab{display:flex;justify-content:space-between}
+  .lab b{font-weight:500;color:#9b9ba1;font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:none;margin:0}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:rgba(255,255,255,.28)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:#fff;margin-top:-12px;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+  input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:rgba(255,255,255,.28)}
+  input[type=range]::-moz-range-thumb{width:28px;height:28px;border:0;border-radius:50%;background:#fff}
+  .seg{display:flex;background:rgba(118,118,128,.32);border-radius:9px;padding:2px;width:190px;flex:none}
+  .seg button{flex:1;padding:6px 0;border-radius:7px;font-size:14px;font-weight:500}
+  .seg button[aria-pressed=true]{background:rgba(255,255,255,.24);font-weight:600}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="top">
+  <button class="round glass" id="gear" aria-label="Settings">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+  </button>
+  <div id="toast" class="glass" role="status"></div>
+  <button class="round glass" id="torch" aria-label="Flashlight" aria-pressed="false">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+  </button>
+</div>
+
+<div id="finder">
+  <video id="cam" autoplay playsinline muted></video>
+  <canvas id="shot"></canvas>
+</div>
+<div id="mode">PRINT</div>
+
+<div id="controls">
+  <button id="thumb" class="cam" aria-label="Last photo"></button>
+  <button id="snap" class="cam" aria-label="Take photo"><i></i></button>
+  <button id="flip" class="round glass cam" aria-label="Flip camera">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3l-1.5-2h-7L7 7H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z"/><path d="M9.5 13a2.7 2.7 0 0 1 4.6-1.8M14.5 13a2.7 2.7 0 0 1-4.6 1.8"/></svg>
+  </button>
+  <div id="preview-bar">
+    <button class="pill glass" id="retake">Retake</button>
+    <button class="pill glass" id="save">Save</button>
+    <button class="pill main" id="print">Print</button>
+  </div>
+</div>
+
+<input type="file" id="file" accept="image/*" hidden>
+<div id="scrim"></div>
+<div id="sheet" class="glass" role="dialog" aria-label="Settings">
+  <div id="grab"></div>
+  <h2>Settings</h2>
+  <div class="group">
+    <div class="row">
+      <div>Printer<small id="pstate">Not connected</small></div>
+      <button id="conn">Connect</button>
+    </div>
+    <div class="row">
+      <div>Auto print<small>Print right after each photo</small></div>
+      <button class="switch" id="auto" role="switch" aria-checked="false" aria-label="Auto print"></button>
+    </div>
+  </div>
+  <p class="gt">Print</p>
+  <div class="group">
+    <div class="row col"><div class="lab"><span>Darkness</span><b id="v-dark"></b></div><input type="range" id="dark" min="0" max="100"></div>
+    <div class="row col"><div class="lab"><span>Brightness</span><b id="v-bright"></b></div><input type="range" id="bright" min="-100" max="100"></div>
+    <div class="row col"><div class="lab"><span>Contrast</span><b id="v-con"></b></div><input type="range" id="con" min="-100" max="100"></div>
+    <div class="row col"><div class="lab"><span>Paper feed after print</span><b id="v-feed"></b></div><input type="range" id="feed" min="0" max="250"></div>
+    <div class="row"><span>Style</span><div class="seg" id="seg-style"><button data-v="dither">Dither</button><button data-v="threshold">Solid</button></div></div>
+    <div class="row"><span>Save photos as</span><div class="seg" id="seg-save"><button data-v="color">Color</button><button data-v="printed">Printed</button></div></div>
+    <div class="row"><span>Print settings</span><button id="reset" style="color:var(--blue);font-size:16px">Reset</button></div>
+  </div>
+  <button id="done">Done</button>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const cam = $('cam'), shot = $('shot');
+const PRINT_W = 384, SERVICE = 0xAE30, CHAR = 0xAE01;
+let facing = 'environment', stream = null, device = null, writeChar = null, bitmap = null, autoPrint = false, busy = false;
+
+/* Settings live in cookies (1 year); localStorage is a fallback for file:// where cookies don't work */
+const store = {
+  get(k){
+    const m = document.cookie.match(new RegExp('(?:^|; )' + k + '=([^;]*)'));
+    if(m){ try{ return decodeURIComponent(m[1]); }catch(_){} }
+    try{ return localStorage.getItem(k); }catch(_){ return null; }
+  },
+  set(k,v){
+    document.cookie = k + '=' + encodeURIComponent(v) + '; max-age=31536000; path=/; SameSite=Lax' + (location.protocol==='https:' ? '; Secure' : '');
+    try{ localStorage.setItem(k,v); }catch(_){}
+  }
+};
+autoPrint = store.get('autoPrint') === '1';
+$('auto').setAttribute('aria-checked', autoPrint);
+
+const DEF = {dark:50,bright:0,con:0,feed:96,style:'dither',save:'color'};
+let S = {...DEF}, source = null, rafId = 0;
+try{ S = {...DEF, ...JSON.parse(store.get('printSettings')||'{}')}; }catch(_){}
+const saveS = () => store.set('printSettings', JSON.stringify(S));
+function syncUI(){
+  for(const k of ['dark','bright','con','feed']){ $(k).value = S[k]; $('v-'+k).textContent = S[k]; }
+  for(const [id,key] of [['seg-style','style'],['seg-save','save']])
+    document.querySelectorAll('#'+id+' button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===S[key]));
+}
+for(const k of ['dark','bright','con','feed']) $(k).oninput = () => {
+  S[k] = +$(k).value; $('v-'+k).textContent = S[k]; saveS();
+  if(k==='bright'||k==='con'){ cancelAnimationFrame(rafId); rafId = requestAnimationFrame(reprocess); }
+};
+for(const [id,key] of [['seg-style','style'],['seg-save','save']])
+  document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{ S[key]=b.dataset.v; saveS(); syncUI(); if(key==='style') reprocess(); });
+$('reset').onclick = () => { S = {...DEF}; saveS(); syncUI(); reprocess(); };
+syncUI();
+
+/* ---------- UI helpers ---------- */
+let tt;
+function say(msg, cls=''){
+  const t = $('toast'); t.textContent = msg; t.className = 'glass show ' + cls;
+  clearTimeout(tt); if(cls !== 'err' || true) tt = setTimeout(()=>t.classList.remove('show'), cls==='err'?6000:3000);
+}
+const sheet = open => document.body.classList.toggle('sheet', open);
+$('gear').onclick = () => sheet(true);
+$('done').onclick = $('scrim').onclick = () => sheet(false);
+$('auto').onclick = () => {
+  autoPrint = !autoPrint; $('auto').setAttribute('aria-checked', autoPrint);
+  store.set('autoPrint', autoPrint ? '1' : '0');
+};
+function setConn(on, name){
+  $('conn').textContent = on ? 'Disconnect' : 'Connect';
+  $('conn').classList.toggle('on', on);
+  $('pstate').textContent = on ? 'Connected to ' + (name||'printer') : 'Not connected';
+  $('print').disabled = !on && false;
+}
+
+/* ---------- Camera ---------- */
+async function startCam(){
+  torchOn = false; document.body.classList.remove('ring'); $('torch').setAttribute('aria-pressed', false);
+  try{
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1280}},audio:false});
+    cam.srcObject = stream;
+  }catch(e){ say('Allow camera access in browser settings','err'); }
+}
+let torchOn = false;
+$('torch').onclick = async () => {
+  const t = stream && stream.getVideoTracks()[0], on = !torchOn;
+  const caps = t && t.getCapabilities ? t.getCapabilities() : {};
+  if(caps.torch){
+    try{ await t.applyConstraints({advanced:[{torch:on}]}); document.body.classList.remove('ring'); }
+    catch(e){ say('Flashlight failed','err'); return; }
+  }else{
+    document.body.classList.toggle('ring', on);
+    if(on) say('This browser blocks the torch, using screen light');
+  }
+  torchOn = on; $('torch').setAttribute('aria-pressed', on);
+};
+$('flip').onclick = () => { facing = facing==='environment' ? 'user' : 'environment'; startCam(); };
+
+const MAXW = 1600;
+function fitCanvas(src, w, h){
+  const k = Math.min(1, MAXW / w), c = document.createElement('canvas');
+  c.width = Math.round(w*k); c.height = Math.round(h*k);
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(src,0,0,c.width,c.height);
+  return c;
+}
+function reprocess(){
+  if(!source) return;
+  const h = Math.round(PRINT_W * source.height / source.width);
+  const c = document.createElement('canvas'); c.width = PRINT_W; c.height = h;
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(source,0,0,PRINT_W,h);
+  bitmap = dither(x.getImageData(0,0,PRINT_W,h));
+  shot.width = PRINT_W; shot.height = h;
+  shot.getContext('2d').putImageData(toImage(bitmap,h),0,0);
+}
+function showSource(c){
+  source = c; reprocess();
+  const t = document.createElement('canvas'); t.width = 160; t.height = Math.round(160*c.height/c.width);
+  t.getContext('2d').drawImage(c,0,0,t.width,t.height);
+  $('thumb').style.backgroundImage = 'url(' + t.toDataURL('image/jpeg',.7) + ')';
+  shot.style.display = 'block'; document.body.classList.add('review');
+}
+$('snap').onclick = async () => {
+  if(!cam.videoWidth){ say('Camera is not ready yet','err'); return; }
+  showSource(fitCanvas(cam, cam.videoWidth, cam.videoHeight));
+  if(autoPrint){
+    if(writeChar) await printNow(); else say('Connect a printer in Settings','err');
+  }
+};
+
+/* ---------- Photo library: open and save ---------- */
+$('thumb').onclick = () => $('file').click();
+$('file').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if(!f) return;
+  try{
+    const bm = await createImageBitmap(f, {imageOrientation:'from-image'});
+    showSource(fitCanvas(bm, bm.width, bm.height)); if(bm.close) bm.close();
+  }catch(err){ say('Could not open that photo','err'); }
+};
+$('save').onclick = async () => {
+  if(!source) return;
+  const printed = S.save === 'printed', cv = printed ? shot : source;
+  const type = printed ? 'image/png' : 'image/jpeg';
+  const blob = await new Promise(r => cv.toBlob(r, type, .92));
+  const file = new File([blob], 'photo-' + Date.now() + (printed ? '.png' : '.jpg'), {type});
+  try{
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file]}); say('Tap Save Image to add it to Photos','ok'); return;
+    }
+  }catch(err){ if(err && err.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000); say('Saved to Downloads','ok');
+};
+function backToCamera(){
+  bitmap = null; source = null; shot.style.display = 'none'; document.body.classList.remove('review');
+}
+$('retake').onclick = backToCamera;
+
+/* ---------- Image to 1-bit (Floyd-Steinberg, auto-contrast) ---------- */
+function dither(img){
+  const w = img.width, h = img.height, g = new Float32Array(w*h);
+  let lo = 255, hi = 0;
+  for(let i=0;i<w*h;i++){
+    const v = 0.299*img.data[i*4] + 0.587*img.data[i*4+1] + 0.114*img.data[i*4+2];
+    g[i] = v; if(v<lo) lo=v; if(v>hi) hi=v;
+  }
+  const span = Math.max(hi-lo,1);
+  const cf = 1 + S.con/100, bo = S.bright*1.28;
+  for(let i=0;i<g.length;i++) g[i] = Math.max(0,Math.min(255,((g[i]-lo)/span*255-128)*cf+128+bo));
+  const out = new Uint8Array(w*h);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const i = y*w+x, old = g[i], nw = old<128 ? 0 : 255, err = S.style==='threshold' ? 0 : old-nw;
+    out[i] = nw===0 ? 1 : 0;
+    if(x+1<w) g[i+1] += err*7/16;
+    if(y+1<h){
+      if(x>0) g[i+w-1] += err*3/16;
+      g[i+w] += err*5/16;
+      if(x+1<w) g[i+w+1] += err*1/16;
+    }
+  }
+  return out;
+}
+function toImage(bits,h){
+  const d = new ImageData(PRINT_W,h);
+  for(let i=0;i<bits.length;i++){ const v = bits[i]?0:255; d.data.set([v,v,v,255],i*4); }
+  return d;
+}
+
+/* ---------- Cat printer protocol ---------- */
+function crc8(data){
+  let c = 0;
+  for(const b of data){ c ^= b; for(let i=0;i<8;i++) c = (c & 0x80) ? ((c<<1)^0x07)&0xFF : (c<<1)&0xFF; }
+  return c;
+}
+function packet(cmd, data){
+  data = Array.from(data);
+  return [0x51,0x78,cmd,0x00,data.length&0xFF,data.length>>8,...data,crc8(data),0xFF];
+}
+function buildJob(bits,h){
+  const out = [];
+  const add = (cmd,data) => out.push(...packet(cmd,data));
+  add(0xA3,[0x00]);
+  add(0xA4,[0x32]);
+  add(0xA6,[0xAA,0x55,0x17,0x38,0x44,0x5F,0x5F,0x5F,0x44,0x38,0x2C]);
+  const energy = 4000 + S.dark*160;
+  add(0xAF,[energy&255,energy>>8]);
+  add(0xBE,[0x00]);
+  add(0xBD,[0x20]);
+  for(let y=0;y<h;y++){
+    const row = new Array(PRINT_W/8).fill(0);
+    for(let x=0;x<PRINT_W;x++) if(bits[y*PRINT_W+x]) row[x>>3] |= 1<<(x&7);
+    add(0xA2,row);
+  }
+  add(0xA1,[S.feed&255,S.feed>>8]);
+  add(0xA6,[0xAA,0x55,0x17,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x17]);
+  add(0xA3,[0x00]);
+  return Uint8Array.from(out);
+}
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const errText = e => (e && (e.message || e.name)) || String(e);
+
+async function printNow(){
+  if(busy || !bitmap) return;
+  if(!writeChar){ say('Connect a printer in Settings','err'); return; }
+  busy = true; $('print').disabled = true;
+  try{
+    const job = buildJob(bitmap, bitmap.length/PRINT_W), CHUNK = 100;
+    for(let i=0;i<job.length;i+=CHUNK){
+      await writeChar.writeValueWithoutResponse(job.slice(i,i+CHUNK));
+      await sleep(20);
+      if(i % 4000 < CHUNK) say('Printing… ' + Math.round(i/job.length*100) + '%');
+    }
+    say('Printed','ok');
+    if(autoPrint) setTimeout(backToCamera, 700);
+  }catch(e){ say('Print failed: ' + errText(e),'err'); }
+  busy = false; $('print').disabled = false;
+}
+$('print').onclick = printNow;
+
+/* ---------- Bluetooth connect (in Settings) ---------- */
+const CANDIDATES = [[0xAE30,0xAE01],[0xAF30,0xAF31],[0x18F0,0x2AF1],[0xFF00,0xFF02],[0xFFE0,0xFFE1]];
+const full = n => '0000' + n.toString(16).padStart(4,'0') + '-0000-1000-8000-00805f9b34fb';
+
+$('conn').onclick = async () => {
+  if(writeChar && device){ device.gatt.disconnect(); return; }
+  if(!navigator.bluetooth){ say('No Bluetooth here. On iPhone, open this page in Bluefy','err'); return; }
+  let step = 'choosing device';
+  try{
+    device = null; let lastErr;
+    const attempts = [
+      {acceptAllDevices:true, optionalServices:[full(0xAE30), full(0xAF30), full(0x18F0)]},
+      {acceptAllDevices:true, optionalServices:[full(0xAE30)]},
+      {acceptAllDevices:true}
+    ];
+    for(const opts of attempts){
+      try{ device = await navigator.bluetooth.requestDevice(opts); break; }
+      catch(err){ lastErr = err; if(err && err.name === 'NotFoundError') break; }
+    }
+    if(!device) throw new Error('picker failed (' + errText(lastErr) + '). Is the printer on and free of other apps?');
+    device.addEventListener('gattserverdisconnected',()=>{ writeChar = null; setConn(false); say('Printer disconnected','err'); });
+    step = 'connecting';
+    $('pstate').textContent = 'Connecting…';
+    const server = await device.gatt.connect();
+    await sleep(500);
+    step = 'finding print service';
+    let found = null;
+    for(const [s,c] of CANDIDATES){
+      try{ found = await (await server.getPrimaryService(s)).getCharacteristic(c); break; }catch(_){}
+    }
+    if(!found){
+      for(const svc of await server.getPrimaryServices().catch(()=>[])){
+        for(const ch of await svc.getCharacteristics().catch(()=>[])){
+          if(ch.properties.writeWithoutResponse){ found = ch; break; }
+        }
+        if(found) break;
+      }
+    }
+    if(!found) throw new Error('no print service on ' + (device.name||'this device'));
+    writeChar = found; setConn(true, device.name);
+    say('Printer connected','ok');
+  }catch(e){ setConn(false); say('Failed while ' + step + ': ' + errText(e),'err'); }
+};
+
+startCam();
+</script>
+</body>
+</html>
